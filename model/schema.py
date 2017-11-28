@@ -1,9 +1,7 @@
 '''
 schema.py
 프로젝트 내의 데이터 타입들을 보다 효율적으로 관리
-
 TYPE check(phone은 무적권 int 이렇게)도 해야할텐데~
-
 '''
 
 class Review_schema():
@@ -43,16 +41,14 @@ class Menu_schema():
             
 class Search_schema():
     def __init__(self,data):
-        self.keys = ['keyword','location']#['price','distance','hate','menu','keyword']
+        self.keys = ['keyword','location','distance']#['price','distance','hate','menu','keyword']
         self.data = data
-
-        self.empty_error = False
-        if self.empty_error:
-            print('\n[SEARCH ERROR]\nLOCATION : Search_schema->init\n빈조건 검색 error\n')
 
         self.error,self.error_key,self.passed_key = self.check_val(data)
         self.keyword = data['keyword'] if 'keyword' in data else None
         self.location = data['location'] if 'location' in data else None
+        self.distance = data['distance']
+        
     def dictionalize(self):
 
         dic = dict()
@@ -96,10 +92,8 @@ class Login_schema():
             print('{} is not key value'.format(self.error_key))
         if self.missing:#필요한 key가 안들어옴
             print('@{}@ expected, but not come'.format(self.missing_key))
-        
         self.id = data['id']
         self.password = data['password']
-        
         
     def dictionalize(self):
         dic = dict()
@@ -134,13 +128,17 @@ class Foodtruck_enroll_schema():
             int(data['phone'])
         except:
             self.phone_error = True
+        self.photo_error = False
+        if 'photo' not in data:
+            self.photo_error = False
+        
         if data['area'] not in [str(i) for i in range(1,10)]:
             self.area_error = True
         if 'ctg' not in data or int(data['ctg']) not in range(1,14):
             print('카테고리 에러')
             print(data['ctg'])      
             self.category_error = True
-        self.keys = ['id','name','phone','area','ctg','introduction']
+        self.keys = ['id','name','phone','area','ctg','introduction','photo']
         self.data = data
         if not bool(self.data):
             print('\n[ERROR]푸드트럭 등록 에러\nFoodtruck_enroll_schema\n데이터가 비었음')
@@ -157,23 +155,26 @@ class Foodtruck_enroll_schema():
             self.phone = data['phone']
             self.area = data['area']
             self.introduction = data['introduction']
-        
+            self.photo= data['photo'] if 'photo' in data else None
+            
     def dictionalize(self):
         data = self.data
         a = dict()
         a['id'] = data['id']
         
         origin_name = data['name']
-        final_name = ''
-        splited = origin_name.split(' ')
-        for i in splited:
-            final_name += i
+        final_name = data['name']
+        #splited = origin_name.split(' ')
+        #for i in splited:
+        #    final_name += i
         a['name'] = final_name#data['name'] #모든 푸드트럭의 이름에서 띄어쓰기를 없앤다.
-        
         a['phone'] = data['phone']
         a['ctg'] = data['ctg']
         a['area'] = data['area']
         a['introduction'] = data['introduction']
+        a['photo'] = data['photo']
+        a['reviewlist'] = {}
+        a['menulist'] = {}
         return a
     
     def check_val(self,data):
@@ -192,18 +193,6 @@ class Foodtruck_enroll_schema():
             print('key error! \n{} is given.\n{} is answer'.format(data.keys, self.keys))
             error = True
         return error,error_key
-    
-
-class Foodtruck_modify_schema():
-    def __init__(self,data):
-        pass
-    
-    def dictionalize(self):
-        pass
-    
-    def check_val(self,data):
-        pass
-
     
 class User_schema():
     def __init__(self, data):
@@ -226,7 +215,6 @@ class User_schema():
             self.phone = data['phone']
             self.type = data['type']
             self.name = data['name']
-            print('fine user schema')
         else:
             print('[Warning] Data error')
             if self.error: #이상한 key가 들어옴

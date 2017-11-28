@@ -1,6 +1,6 @@
 from flask import Flask, request, make_response, json, Response
 from model.db_manager import Database_manager
-from model.schema import User_schema,Login_schema,Foodtruck_enroll_schema,Foodtruck_modify_schema,Search_schema, Menu_schema, Review_schema
+from model.schema import User_schema,Login_schema,Foodtruck_enroll_schema,Search_schema, Menu_schema, Review_schema
 import sys
 from geopy.distance import great_circle
 #sys.path.append('.') #1120/이거 왜 했더
@@ -115,7 +115,7 @@ def login():
 @application.route('/foodtruck_enroll',methods=['POST'])
 def foodtruck_enroll():
     assert(request.method == 'POST')
-    print(request.form)
+    #print(request.form)
     if len(list(request.form.keys())) != 1: #enroll part
         print('[푸드트럭 가입 혹은 수정 요청]')
         fd_enroll_schema = Foodtruck_enroll_schema(request.form)
@@ -125,6 +125,8 @@ def foodtruck_enroll():
             return jsonify('3')
         if fd_enroll_schema.category_error:
             return jsonify('4')
+        if fd_enroll_schema.photo_error:
+            return jsonify('5')
         #1. basic schema check (Key missing or error)
         data = fd_enroll_schema.dictionalize()
         #2. db duplicate check(food truck name)
@@ -143,7 +145,8 @@ def foodtruck_enroll():
         user_id = request.form['id']
         print(user_id)
         error,my_foodtruck_data = dbman.find_foodtruck_info(user_id)
-        print(my_foodtruck_data)
+        print(my_foodtruck_data['phone'])
+        print(my_foodtruck_data['menulist'])
         if str(error)=='-1' :print('유저의 푸드트럭이 존재하지 않음')
         print('결과 반환')
         return jsonify(str(error),my_foodtruck_data)
@@ -151,7 +154,7 @@ def foodtruck_enroll():
 @application.route('/menu_enroll',methods=['POST'])
 def menu_enroll():
     print('[메뉴등록 요청]')
-    print(request.form)
+    
     schem = Menu_schema(request.form)
     data = schem.dictionalize()
     if schem.empty_error:
@@ -164,29 +167,41 @@ def menu_enroll():
         return jsonify('0',{'menulist':existing_menu})
     return jsonify('1')
 
-@application.route('/start_sale',methods=['POST'])
+@application.route('/sale_state',methods=['POST'])
 def start_sale():
-    print('[판매 시작 요청]')
+    print('[판매 여부 변경 요청]')
     raw_data = dict()
     raw_data['id'] = request.form['id']
     tmp = eval(request.form['location'])
     raw_data['location'] = (float(tmp[0]),float(tmp[1]))
-    status = dbman.start_sale(raw_data)
-    if status:
-        return jsonify('0')
+    start_end = request.form['status']
+    if start_end == '1':#판매시작
+        status,menulist = dbman.start_sale(raw_data)
+        if status == -1:#푸드트럭 없는 사람이 장사 종료
+            return jsonify('-1',{'menulist':[]})
+        print('메뉴 리스트 : ',end='')
+        print(menulist)
+        if status:
+            print('시작')
+            return jsonify('1',{'menulist':menulist})
+    if start_end =='0':#판매종료
+        raw_data['total_price'] = request.form['total_price']
+        status = dbman.end_sale(raw_data)
+        if status:
+            print('종료')
+            return jsonify('0')
+    return jsonify('-1')
 
 @application.route('/review_write',methods=['POST'])
 def review_write():
     print('[리뷰 작성]')
     print(request.form)
-
     rw_schem = Review_schema(request.form)
     if rw_schem.empty_error:
         print('[빈 값]')
         return jsonify('1')
 
     schem = rw_schem.dictionalize()
-
     allreview = dbman.review_write(schem)
     print('리뷰작성완료')
     return jsonify('0',{'reviewlist':allreview})
@@ -196,45 +211,26 @@ def menu_remove():
     print('[메뉴 삭제]')
     print(request.form)
     res = dbman.remove_menu(request.form)
-
     return jsonify('0')
-
-
-    
-    
-@application.route('/foodtruck_update',methods=['GET'])
-def foodtruck_update():
-    data = request.args
-    #1. update schema check
-
-    #2. db exsistence check
-
-        #3-1. modify
-
-        #3-2. error return
-    pass
-
 
 @application.route('/search',methods=['POST'])
 def search():
     print('[검색 요청]')
-    #1. condition을 받는다 - condition schema
     print(request.form)
     search_schema = Search_schema(request.form)
-    if search_schema.empty_error:
-        print('\n[SEARCH ERROR]\nLOCATION : Search_schema->init\n빈 조건으로 검색 시도\n')
-        return jsonify('1')
     conditions = search_schema.dictionalize()
     search_result = dbman.search_foodtruck(conditions)
     print('검색 완료')
-    for fd in search_result[1]:
-        for d in fd:
-            print('{} : {}'.format(d,fd[d]))
-        print('\n\n')
+    for idx,i in enumerate(search_result[1]):
+        k = ['distance','name','lat','long','reviewlist','sales','ctg','phone','id','saleslist','photo','area','menulist','introduction']
+        print(i['name'])
+        print(i.keys())
+        search_result[1][idx]['photo'] ='하하하하하하하하하하하하하하'
+    if len(search_result[1])!=0:
+        print(search_result[1][0])
     data = jsonify(search_result[0],{'data':search_result[1]})
     return data
     
-
 @application.route('/foodtruck_page',methods=['POST'])
 def foodtruck_page():
     '''
@@ -248,10 +244,23 @@ def foodtruck_page():
     fd_search_result['menu'] = menu_result
     return jsonify('0',search_result)
     
-    
+@application.route('/sale_list',methods=['POST'])
+def sale_list():
+    print('[판매정보 조회]')
+    user_id = request.form['id']
+    sales_result = dbman.fd_sale_list(user_id)
+    return jsonify('0',{'salelist':sales_result})
+
+@application.route('/fd_photo',methods=['POST'])
+def fd_photo():
+    print('[푸드트럭 사진 정보 요청]')
+    user_id = request.form['f_id']
+    photo = dbman.find_photo(user_id)
+    print(photo[:10])
+    return jsonify('0',{'photo':photo})
 
 if __name__ == '__main__':
-    ip='143.248.199.192'
+    ip='0.0.0.0'
     port = 8081
     application.run(host=ip,port=port,debug=True,use_reloader=False)
     
