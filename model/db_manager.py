@@ -1,8 +1,9 @@
 from pymongo import MongoClient,ReturnDocument
 from model.util import gps2meter,distance,ctg2name
 from operator import itemgetter
-from time import localtime
 from model.geocoder import loc2addr
+import pytz
+import datetime as dt
 
 '''
 SERVER <-> DB간 method 정보
@@ -162,10 +163,12 @@ class Database_manager():
             fd = self.foodtruck_col.find_one({'id':data['id']})
         #장사개시 로그를 DB에 찍어야 한다.
         current = ''
-        for i in localtime()[:5]:
-            current += str(i)+'-'
         
-        current += str(localtime()[6])
+        ltz = pytz.timezone('Asia/Seoul')
+        ldt = dt.datetime.now().replace(tzinfo=pytz.utc).astimezone(ltz)
+        current = '{}-{}-{}-{}-{}-{}'.format(ldt.year,ldt.month,ldt.day,ldt.hour,ldt.minute,ldt.weekday())
+
+        
         #2017-11-25-20-25-6(마지막껀 요일)
         for i in fd['saleslist']:
             sales_cnt += 1
@@ -196,9 +199,10 @@ class Database_manager():
         sales_cnt -= 1
         
         current = ''
-        for i in localtime()[:5]:
-            current += str(i)+'-'
-        current += str(localtime()[6])
+
+        ltz = pytz.timezone('Asia/Seoul')
+        ldt = dt.datetime.now().replace(tzinfo=pytz.utc).astimezone(ltz)
+        current = '{}-{}-{}-{}-{}-{}'.format(ldt.year,ldt.month,ldt.day,ldt.hour,ldt.minute,ldt.weekday())
         #2017-11-25-20-25-6(마지막껀 요일)
 
         update_ = dict()
@@ -340,18 +344,20 @@ class Database_manager():
         tmp = res[0]['date']
         ondate = []
         for i in res:
-            if i['date'] == tmp:
+            i['sortkey'] = '0'*(5-len(i['end']))+ i['end'][:-3]+i['end'][-2:]
+            if i['date']==tmp:
                 ondate.append(i)
             else:
                 ondate = sorted(ondate,key=itemgetter('end'))
                 final_result += ondate
                 ondate=[i]
                 tmp=i['date']
-        ondate = sorted(ondate,key=itemgetter('end'))
+        ondate = sorted(ondate,key=itemgetter('sortkey'))
         final_result += ondate
 
         print('매출정보 반환')
-
+        for i in final_result:
+            del i['sortkey']
         return final_result
             
 def search_algorithm(fd_col,condition):
