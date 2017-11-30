@@ -446,6 +446,7 @@ class Database_manager():
         fd = self.user_col.find_one({'id':user_id})
         if 'favorites' not in fd: return []
         favorites = fd['favorites']
+
         if favorites == []: return []
         return_ = []
         for f_id in favorites:
