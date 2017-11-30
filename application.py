@@ -8,26 +8,6 @@ from geopy.distance import great_circle
 CS408 Flask Server
 '''
 
-'''
-
-!!!!!!!!!!!!!!!!!!!세션을 통한 권한문제 해결 http://www.w3ii.com/ko/flask/flask_sessions.html
-
-##안드로이드-플라스크 예제 https://www.slideshare.net/aksmj/flask-redis-retrofit
-
-##TOBE IMPLEMENTED...
-1. 푸드트럭 등록/수정 관련
-3. 검색 서비스 구현
-
-##CHALLENGING TASK...
-1. 검색 서비스 구현 (EX : 주변에 엄청나게 많이 있으면, 어떤 기준? 유저의 선호도!)
-
-2. 푸드트럭의 리뷰를 기준으로, 일반적인 유저 반응 뽑아서 키워드로 보여주기
-    -> 키워드 검색에도 이용 가능
-    -> 키워드 검색은 어떻게 하지? 재료,메뉴,리뷰,이름 싹 긁어서?
-
-'''
-
-
 application = Flask(__name__)
 #application.secret_key = 'secret_key'
 dbman = Database_manager()
@@ -52,6 +32,8 @@ def sign_in():
     print('[회원가입 요청]')
     input_data = request.form
     print(input_data)
+
+    #input data check
     if not bool(request.form):
         print('len == 0)')
         return jsonify('1')
@@ -62,11 +44,12 @@ def sign_in():
     if user_schema.empty_error:
         print('비어있는 정보가 있음')
         return jsonify('1')
+
+    #new user insert try
     data = user_schema.dictionalize()
     cnt,db_check = dbman.check_sign_in(data)
     if db_check:#중복회원가입 등, request<->DB간 consistency check 완료
         new_user_id = dbman.insert_sign_in(data)
-        print(str(new_user_id))
         print('{} 가입완료'.format(data['name']))
         return jsonify('0')
     else:
@@ -76,28 +59,26 @@ def sign_in():
         if cnt == '2':
             print('[회원가입]ID중복')
             return jsonify('2')
-        else:
-            print('꺄아아ㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏㅏ아아아아ㅏㅇ아아!')
-        
+            
 
-        
 @application.route('/login',methods=['POST'])
 def login():
     print('[로그인 요청]')
     print(request.form)
     
-    #login_schema = Login_schema(request.args)
+    #input data check
     login_schema = Login_schema(request.form)
     if login_schema.empty_error:
         return jsonify('1')
     if login_schema.error or login_schema.missing:
         print('LOGIN ERROR')
         return jsonify('1')
+
+    #try to login
     data = login_schema.dictionalize()
     num,login_result,user_type = dbman.try_login(data)
     if login_result:#success login
         print('로그인 성공')
-        
         print(user_type)
         if user_type == 'Seller':
             print('4')
@@ -111,13 +92,21 @@ def login():
         print('로그인 실패')
         return jsonify(num)#2=ID없음 3=비밀번호틀림
 
+@application.route('/foodtruck_location',methods=['POST'])
+def foodtruck_location():
+    id_ = request.form['id']
+    loc = dbman.foodtruck_location(id_)
+    return jsonify('0',{'lat':loc[0],'lng':loc[1]})
     
 @application.route('/foodtruck_enroll',methods=['POST'])
 def foodtruck_enroll():
     assert(request.method == 'POST')
-    #print(request.form)
-    if len(list(request.form.keys())) != 1: #enroll part
+
+    #하나의 도메인이 여러 기능을 하고, 각 기능은 input key의 개수를 통해 판단한다.
+    if len(list(request.form.keys())) != 1: #푸드드럭 등록
         print('[푸드트럭 가입 혹은 수정 요청]')
+        
+        #input data check
         fd_enroll_schema = Foodtruck_enroll_schema(request.form)
         if fd_enroll_schema.area_error:
             return jsonify('2')
@@ -127,34 +116,36 @@ def foodtruck_enroll():
             return jsonify('4')
         if fd_enroll_schema.photo_error:
             return jsonify('5')
-        #1. basic schema check (Key missing or error)
+
         data = fd_enroll_schema.dictionalize()
         #2. db duplicate check(food truck name)
         db_check= dbman.check_foodtruck_enroll(data)
+        '''
+        db_check
+        None : 해당 유저의 아이디로 등록된 푸드트럭이 있음
+        False : 동일한 데이터(ex:매장번호)로 등록된 매장이 있음
+        True : OK
+        '''
         if db_check == None:#푸드트럭 수정 요청 
             res = dbman.modify_foodtruck(data)
             return jsonify('0')
         elif not db_check:#중복유저
             return jsonify('1')
-        print('푸드트럭 등록 완료')
+
         insert_res = dbman.insert_foodtruck_enroll(data)   
+        print('푸드트럭 등록 완료')
         return jsonify('0')
 
-    else:#modification part
-        print('[푸드트럭 존재 여부 확인]')
+    else:#'나의 푸드트럭 클릭. 이미 있으면 채우고, 없으면 -1로 채움'
         user_id = request.form['id']
-        print(user_id)
         error,my_foodtruck_data = dbman.find_foodtruck_info(user_id)
-        print(my_foodtruck_data['phone'])
-        print(my_foodtruck_data['menulist'])
         if str(error)=='-1' :print('유저의 푸드트럭이 존재하지 않음')
-        print('결과 반환')
+        print('나의 푸드트럭 결과 반환')
         return jsonify(str(error),my_foodtruck_data)
 
 @application.route('/menu_enroll',methods=['POST'])
 def menu_enroll():
-    print('[메뉴등록 요청]')
-    
+    print('[메뉴등록 요청]') 
     schem = Menu_schema(request.form)
     data = schem.dictionalize()
     if schem.empty_error:
@@ -163,7 +154,6 @@ def menu_enroll():
     if db_status:
         existing_menu = dbman.find_menulist_of_user(data['id'])
         print('메뉴 등록 완료')
-        print('총 메뉴 : {}'.format(existing_menu))
         return jsonify('0',{'menulist':existing_menu})
     return jsonify('1')
 
@@ -222,12 +212,7 @@ def search():
     search_result = dbman.search_foodtruck(conditions)
     print('검색 완료')
     for idx,i in enumerate(search_result[1]):
-        k = ['distance','name','lat','long','reviewlist','sales','ctg','phone','id','saleslist','photo','area','menulist','introduction']
-        print(i['name'])
-        print(i.keys())
         search_result[1][idx]['photo'] ='하하하하하하하하하하하하하하'
-    if len(search_result[1])!=0:
-        print(search_result[1][0])
     data = jsonify(search_result[0],{'data':search_result[1]})
     return data
     
@@ -258,6 +243,14 @@ def fd_photo():
     photo = dbman.find_photo(user_id)
     print(photo[:10])
     return jsonify('0',{'photo':photo})
+
+@application.route('/keyword_recommend',methods=['POST'])
+def keyword_recommend():
+    print('[검색 키워드 추천]')
+    raw_loc = request.form['location']
+    location = (float(raw_loc.split(',')[0][1:]),float(raw_loc.split(',')[1][:-1]))
+    keyword = dbman.recommend_keyword(location)
+    return jsonify('0',{'keyword':keyword})
 
 if __name__ == '__main__':
     ip='0.0.0.0'

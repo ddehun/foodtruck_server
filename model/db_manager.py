@@ -16,7 +16,7 @@ class Database_manager():
         db = client.test
         self.user_col = db.user
         self.foodtruck_col = db.foodtruck
-        
+        self.keyword_col = db.keyword 
         
     def remove_menu(self,data):
         res = self.foodtruck_col.update({'id' : data['id']},
@@ -97,7 +97,16 @@ class Database_manager():
             menulist.append(fd['menulist'][i])
         return menulist
 
-    
+    def foodtruck_location(self,name):
+        fd = self.foodtruck_col.find_one({'id':name})
+        if 'saleslist' not in fd or fd['saleslist']=={}:
+            return (0,0)
+        loc = None
+        cnt = -1
+        for i in fd['saleslist']:
+            cnt += 1
+        loc = fd['saleslist'][str(cnt)]['location']
+        return loc
         
     def check_foodtruck_enroll(self,data):
         modify_check = self.foodtruck_col.find({'id':data['id']}).count()
@@ -123,11 +132,8 @@ class Database_manager():
                 name += i
             if name==newname:
                 print('중복된 푸드트럭 이름')
-                return False
-            
+                return False     
         return True 
-
-
         
     def start_sale(self,data):
         print(data['id'],end=' ')
@@ -154,7 +160,6 @@ class Database_manager():
         menulist = []
         for i in raw_menulist:
             menulist.append(raw_menulist[i])
-
 
         #판매여부 관련
         sales_cnt = 0
@@ -282,12 +287,48 @@ class Database_manager():
                 {'$set':update_},
                 return_document=ReturnDocument.AFTER)
         return True
-        
+       
+    def recommend_keyword(self,location):
+        res = self.keyword_col.find()
+        counter = []
+        for keyword in res:#각 키워드별로, 주변에서 검색된 횟수를 counting한다.
+            cnt = 0
+            for idx in keyword['his']:
+                loc = keyword['his'][idx]['location']
+                dis = gps2meter(location,loc)*1000
+                if dis<2000:
+                    cnt += 1
+            counter.append({'name':keyword['name'], 'count':cnt})
+    
+        counter = sorted(counter, key=itemgetter('count'), reverse=True)
+
+        result_ = []
+        for i in counter:
+            result_.append(i['name'])
+
+        print('#키워드 추천 최종 리스트#')
+        print(result_)
+        return result_
+
     def search_foodtruck(self,condition):
         #푸드트럭 검색
         results = search_algorithm(self.foodtruck_col, condition)
 
-        #여기서 search한걸 sorting하는 알고리즘 추가? 다른데서 짜서 import하기
+        #검색 키워드 저장
+        keyword = condition['keyword'] if condition['keyword'] != '' else None
+        if keyword!=None:
+            curr_cnt = 1
+            res = self.keyword_col.find_one({'name':keyword})
+            if res == None:
+                self.keyword_col.insert({'name':keyword})
+                update_ = {'$set':{'his.{}.location'.format(curr_cnt):condition['location']}}
+                res = self.keyword_col.find_one_and_update({'name':keyword},update_)
+            else:
+                for i in res['his']:
+                    curr_cnt += 1
+                update_ = {'$set' : {'his.{}.location'.format(curr_cnt):condition['location']}}
+                res = self.keyword_col.find_one_and_update({'name':keyword},update_)
+ 
         return [len(results),results]
 
     def find_photo(self,f_id):
@@ -339,7 +380,7 @@ class Database_manager():
             res.append(dic)
 
         #날짜,시간 순으로 매출정보 정리하기
-        res= sorted(res,key=itemgetter('date'))
+        res= sorted(res,key=itemgetter('date'),reverse=True)
         final_result = []
         tmp = res[0]['date']
         ondate = []
@@ -361,33 +402,18 @@ class Database_manager():
         return final_result
             
 def search_algorithm(fd_col,condition):
-    #Keyword, location을 통해 현재 영업중인 푸드트럭을 찾는다.
-    '''
-    여기에, 판매중인 애들만 고르는 조건 ex: on_sale : true 이런거도 넣어야함
-
-    1. 2km안에 꺼 중에서
-    2. 키워드 검색하기
-
-    인데, 지금은 없으니깐 그냥 함!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    '''
-    
+    #Keyword, location을 통해 현재 영업중인 푸드트럭을 찾는다. 
     results = []
-
     location_results = []
     
     #0. 위치기반 검색
     threshold = int(condition['distance'])#거리제한
 
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    print(threshold)
-    print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+    print('{}m이내 푸드트럭 검색'.format(threshold))
     pivot_location = condition['location']    
 
+    total = fd_col.find()#fd_col.find({'sales':True})
 
-    total = fd_col.find()#fd_col.find({'sales':True})#원래는 여기서 {'sales':True} 조건이 들어가야 한다(판매중인 애들)/지금은 일단 지운다.
-
-
-    
     for fd in total:
         if 'name' not in fd:continue
         if 'lat' not in fd: continue
@@ -411,7 +437,6 @@ def search_algorithm(fd_col,condition):
                 if fd not in results:
                     results.append(fd)
 
-
     #2. 카테고리 검색 (키워드 안에 카테고리 단어가 있을 경우)
     name2int, int2name = ctg2name(1,True)
     byctg_res = []
@@ -424,12 +449,14 @@ def search_algorithm(fd_col,condition):
                 if fd not in results:
                     results.append(fd)
 
+    #최종결과 거리로 sorting
     final_results = []
     for i in range(len(results)):
         final_results.append(listpack(results[i]))
     final_results = sorted(final_results,key=itemgetter('distance'))#가까운 푸드트럭부터 반
     for i in range(len(final_results)):
         final_results[i]['distance'] = str(int(float(final_results[i]['distance'])))
+
     print('\n#최종검색결과#')
     for i in final_results:
         print(i['name'])
@@ -439,68 +466,6 @@ def search_algorithm(fd_col,condition):
 def split_phone(phone):
     phone = str(phone)
     return phone[:3]+'-'+phone[3:-4]+'-'+phone[-4:]
-
-
-def search_algorithms(fd_col,condition):
-    #Keyword, location을 통해 현재 영업중인 푸드트럭을 찾는다.
-    '''
-    여기에, 판매중인 애들만 고르는 조건 ex: on_sale : true 이런거도 넣어야함
-
-    1. 2km안에 꺼 중에서
-    2. 키워드 검색하기
-
-    인데, 지금은 없으니깐 그냥 함!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    '''
-    
-    results = []
-    #1. 푸드트럭 이름 검색
-    if 'keyword' in condition:# and condition['keyword'] != '':
-        byname_res = fd_col.find({'name':condition['keyword']})#김밥나라 -> 김밥나라
-        if byname_res.count() != 0:
-            for i in byname_res:
-                del i['_id']
-                results.append(i)
-        
-        byname_res = fd_col.find()
-        for fd in byname_res:
-            if condition['keyword'] in fd['name']:#김밥 쳐도 김밥나라
-                del fd['_id']
-                if fd not in results:
-                    results.append(fd)
-        
-    #2. 카테고리 검색 (키워드 안에 카테고리 단어가 있을 경우)
-    
-    name2int, int2name = ctg2name(1,True)
-    if 'keyword' in condition and condition['keyword'] in name2int.keys():# and condition['keyword'] != '':
-        ctg = name2int[condition['keyword']]
-        byctg_res = fd_col.find({'ctg':str(ctg)})
-        for i in byctg_res:
-            del i['_id']
-            if i not in results:
-                results.append(i)
-
-
-    #3. 위치기반 검색
-
-    threshold = 2 #2km이내만 검색
-    pivot_location = condition['location']    
-    total = fd_col.find() #이걸 지역별로 나누는게 좋겠다. 충청 지역만 검색! 이런식으로 아닌가?아닌듯/근데뭔가 좁힐수있는 조건이 나중엔 필요할듯
-    for fd in total:
-        if 'lat' not in fd: continue
-        raw_loc = (float(fd['lat']),float(fd['long']))
-        print('두 푸드트럭간의 거리 : ',end='')
-        dis = gps2meter(pivot_location,raw_loc)
-        print(dis,end='km\n')
-        if dis < 2:
-            del fd['_id']
-            if fd not in results:
-                results.append(fd)
-
-    #4. 키워드 검색
-    final_results = []
-    for i in range(len(results)):
-        final_results.append(listpack(results[i]))
-    return final_results
 
 
 def listpack(data):
@@ -521,9 +486,7 @@ def listpack(data):
 
     for i in rekeys:
         if i not in newdata:
-            newdata[i] = []
-            
-    
+            newdata[i] = []    
     return newdata
 
 
