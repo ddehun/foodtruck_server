@@ -50,7 +50,6 @@ class Search_schema():
         self.distance = data['distance']
         
     def dictionalize(self):
-
         dic = dict()
         for i in self.keys:
             if i in self.data.keys():
@@ -58,6 +57,8 @@ class Search_schema():
                     raw_loc = self.data['location']
                     raw_loc = (float(raw_loc.split(',')[0][1:]),float(raw_loc.split(',')[1][:-1]))
                     dic[i] = raw_loc
+                elif i=='keyword':
+                    dic[i] = self.data[i].strip()
                 else:
                     dic[i] = self.data[i]
         return dic

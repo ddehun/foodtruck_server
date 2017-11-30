@@ -26,7 +26,6 @@ def main():
     print('Welcome to CS408 TEAM16 Server!')
     return('Welcome to CS408 TEAM16 Server!')
 
-
 @application.route('/sign_in',methods=['POST'])
 def sign_in():
     print('[회원가입 요청]')
@@ -92,16 +91,9 @@ def login():
         print('로그인 실패')
         return jsonify(num)#2=ID없음 3=비밀번호틀림
 
-@application.route('/foodtruck_location',methods=['POST'])
-def foodtruck_location():
-    id_ = request.form['id']
-    loc = dbman.foodtruck_location(id_)
-    return jsonify('0',{'lat':loc[0],'lng':loc[1]})
-    
 @application.route('/foodtruck_enroll',methods=['POST'])
 def foodtruck_enroll():
     assert(request.method == 'POST')
-
     #하나의 도메인이 여러 기능을 하고, 각 기능은 input key의 개수를 통해 판단한다.
     if len(list(request.form.keys())) != 1: #푸드드럭 등록
         print('[푸드트럭 가입 혹은 수정 요청]')
@@ -139,9 +131,42 @@ def foodtruck_enroll():
     else:#'나의 푸드트럭 클릭. 이미 있으면 채우고, 없으면 -1로 채움'
         user_id = request.form['id']
         error,my_foodtruck_data = dbman.find_foodtruck_info(user_id)
-        if str(error)=='-1' :print('유저의 푸드트럭이 존재하지 않음')
+        if str(error)=='-1' :
+            print('유저의 푸드트럭이 존재하지 않음')
+            print(my_foodtruck_data)        
         print('나의 푸드트럭 결과 반환')
         return jsonify(str(error),my_foodtruck_data)
+    
+@application.route('/foodtruck_page',methods=['POST'])
+def foodtruck_page():
+    '''
+    푸드트럭 소유자의 id를 받으면, 해당 푸드트럭 정보 return
+    푸드트럭 검색 이후, 푸드트럭 검색에서 사용된다.
+    '''
+    print('[푸드트럭 조회]')
+    owner_id = request.form['id']
+    fd_search_result = dbman.find_foodtruck_info(owner_id)#푸드트럭 정보
+    menu_result = None#해당 푸드트럭의 메뉴 리스트
+    fd_search_result['menu'] = menu_result
+    return jsonify('0',search_result)
+
+@application.route('/foodtruck_location',methods=['POST'])
+def foodtruck_location():
+    id_ = request.form['id']
+    print('[{}의 푸드트럭 위치 요청]'.format(id_))
+    loc = dbman.foodtruck_location(id_)
+    result = jsonify('0',{'lat':loc[0],'lon':loc[1]})
+    return result
+    
+@application.route('/fd_photo',methods=['POST'])
+def fd_photo():
+    print('[푸드트럭 사진 정보 요청]')
+    user_id = request.form['f_id']
+    real_user_id = request.form['u_id']
+    photo = dbman.find_photo(user_id)
+    favorite_result = dbman.favorite_check(real_user_id,user_id)
+    print(photo[:10])
+    return jsonify('0',{'photo':photo,'check':str(favorite_result)})
 
 @application.route('/menu_enroll',methods=['POST'])
 def menu_enroll():
@@ -156,6 +181,13 @@ def menu_enroll():
         print('메뉴 등록 완료')
         return jsonify('0',{'menulist':existing_menu})
     return jsonify('1')
+
+@application.route('/menu_remove',methods=['POST'])
+def menu_remove():
+    print('[메뉴 삭제]')
+    print(request.form)
+    res = dbman.remove_menu(request.form)
+    return jsonify('0')
 
 @application.route('/sale_state',methods=['POST'])
 def start_sale():
@@ -181,6 +213,13 @@ def start_sale():
             print('종료')
             return jsonify('0')
     return jsonify('-1')
+    
+@application.route('/sale_list',methods=['POST'])
+def sale_list():
+    print('[판매정보 조회]')
+    user_id = request.form['id']
+    sales_result = dbman.fd_sale_list(user_id)
+    return jsonify('0',{'salelist':sales_result})
 
 @application.route('/review_write',methods=['POST'])
 def review_write():
@@ -195,13 +234,6 @@ def review_write():
     allreview = dbman.review_write(schem)
     print('리뷰작성완료')
     return jsonify('0',{'reviewlist':allreview})
-    
-@application.route('/menu_remove',methods=['POST'])
-def menu_remove():
-    print('[메뉴 삭제]')
-    print(request.form)
-    res = dbman.remove_menu(request.form)
-    return jsonify('0')
 
 @application.route('/search',methods=['POST'])
 def search():
@@ -215,34 +247,6 @@ def search():
         search_result[1][idx]['photo'] ='하하하하하하하하하하하하하하'
     data = jsonify(search_result[0],{'data':search_result[1]})
     return data
-    
-@application.route('/foodtruck_page',methods=['POST'])
-def foodtruck_page():
-    '''
-    푸드트럭 소유자의 id를 받으면, 해당 푸드트럭 정보 return
-    푸드트럭 검색 이후, 푸드트럭 검색에서 사용된다.
-    '''
-    print('[푸드트럭 조회]')
-    owner_id = request.form['id']
-    fd_search_result = dbman.find_foodtruck_info(owner_id)#푸드트럭 정보
-    menu_result = None#해당 푸드트럭의 메뉴 리스트
-    fd_search_result['menu'] = menu_result
-    return jsonify('0',search_result)
-    
-@application.route('/sale_list',methods=['POST'])
-def sale_list():
-    print('[판매정보 조회]')
-    user_id = request.form['id']
-    sales_result = dbman.fd_sale_list(user_id)
-    return jsonify('0',{'salelist':sales_result})
-
-@application.route('/fd_photo',methods=['POST'])
-def fd_photo():
-    print('[푸드트럭 사진 정보 요청]')
-    user_id = request.form['f_id']
-    photo = dbman.find_photo(user_id)
-    print(photo[:10])
-    return jsonify('0',{'photo':photo})
 
 @application.route('/keyword_recommend',methods=['POST'])
 def keyword_recommend():
@@ -250,7 +254,33 @@ def keyword_recommend():
     raw_loc = request.form['location']
     location = (float(raw_loc.split(',')[0][1:]),float(raw_loc.split(',')[1][:-1]))
     keyword = dbman.recommend_keyword(location)
-    return jsonify('0',{'keyword':keyword})
+    return jsonify('0',{'keyword1':keyword[0],'keyword2':keyword[1],'keyword3':keyword[2]})
+
+@application.route('/favorite_check',methods=['POST'])
+def favorite_check():
+    print('[즐겨찾기 여부 확인]')
+    user_id,f_id = request.form['user_id'],request.form['f_id']
+    result = dbman.favorite_check(user_id,f_id)
+    print(result) 
+    return jsonify('0',{'check':str(result)})
+
+@application.route('/favorite_change',methods=['POST'])
+def favorite_change():
+    print('[즐겨찾기 변경]')
+    user_id,f_id,curr = request.form['user_id'],request.form['f_id'],request.form['status']
+    res = dbman.favorite_change(user_id,f_id,curr)
+    return jsonify(curr)
+
+@application.route('/favorite_list',methods=['POST'])
+def favorite_list():
+    print('[즐겨찾기 리스트]')
+    user_id = request.form['id']
+    print(user_id)
+    res = dbman.favorite_list(user_id)
+    for i in range(len(res)):
+        res[i]['distance'] = '0' 
+    return jsonify('0',{'data':res})
+
 
 if __name__ == '__main__':
     ip='0.0.0.0'

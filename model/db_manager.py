@@ -17,11 +17,115 @@ class Database_manager():
         self.user_col = db.user
         self.foodtruck_col = db.foodtruck
         self.keyword_col = db.keyword 
+
+    def try_login(self,data):
+        '''
+        로그인
+        '''
+        login_id_result = self.user_col.find({'id' : data['id']}).count()
+        if login_id_result != 1:
+            return '2',False, None
+        if login_id_result >2:
+            print('으아아아아아아아아아아앙ㅇ아아아아아')
+        login_id = self.user_col.find({'id' : data['id'],'password':data['password']})
+        login_id_result = login_id.count()
+        if login_id_result != 1:
+            return '3',False, None
+        else:
+            return '0',True, login_id[0]['type']
+ 
+    def check_sign_in(self,data):
+        '''
+        회원가입 항목에 대한, DB와의 consistency 확인 ((이름-연락처) 및 ID 중복 확인))
+        '''
+        dupl1 = self.user_col.find({'name' : data['name'], 'phone':data['phone']}).count()
+        if dupl1 != 0:#duplicated (name, phone) tuple
+            print('same person signin')
+            return '3',False
+        dupl2 = self.user_col.find({'id':data['id']}).count()
+        if dupl2 != 0:#duplicated ID
+            print('\n[SIGN_IN ERROR]\nLOCATION : db_manager->check_sign_in\nduplicated id')
+            return '2',False
+        return '0',True
+    
+    def insert_sign_in(self,data):
+        '''
+        새로운 유저 데이터 저장
+        '''
+        user_id = self.user_col.insert(data)
+        return user_id
+
+    def find_foodtruck_info(self,user_id):
+        '''
+        user_id를 통해 푸드트럭 검색
+        dic return
+        '''
+        data = {'name':'-1','phone':'-1','area':'-1','ctg':'-1','introduction':'-1','menulist':'-1','reviewlist':'-1','photo':'-1'}
+        result = self.foodtruck_col.find_one({'id':user_id})
+        if result==None: return -1,data
+        for key in data:
+            if key == 'phone':
+                data['phone'] = split_phone(result['phone'])
+            elif key in ['menulist','reviewlist']:
+                data[key] = []
+                if key in result:
+                    for menu in result[key]:
+                        data[key].append(result[key][menu])
+            else:
+                data[key] = result[key] 
+        return 0,data
+    
+    def modify_foodtruck(self,data):
+        update_ = {}
+        for i in data:
+            update_[i] = data[i]
+        res = self.foodtruck_col.find_one_and_update(
+                {'id':data['id']},
+                {'$set':update_},
+                return_document=ReturnDocument.AFTER)
+        return True
+
+    def insert_foodtruck_enroll(self,data):
+        fd_id = self.foodtruck_col.insert(data)
+        return fd_id
+ 
+    def foodtruck_location(self,name):
+        fd = self.foodtruck_col.find_one({'id':name})
+        if 'saleslist' not in fd or fd['saleslist']=={}:
+            return (0,0)
+        loc = None
+        cnt = -1
+        for i in fd['saleslist']:
+            cnt += 1
+        loc = fd['saleslist'][str(cnt)]['location']
+        return loc
         
-    def remove_menu(self,data):
-        res = self.foodtruck_col.update({'id' : data['id']},
-                                        {'$unset' : {'{}.{}'.format('menulist',data['name']) : ''}})
-        return res
+    def check_foodtruck_enroll(self,data):
+        modify_check = self.foodtruck_col.find({'id':data['id']}).count()
+        if modify_check!=0: #푸드트럭 수정 요청
+            return None
+        dupl = self.foodtruck_col.find(data).count()
+        if dupl >= 1:
+            print('same food truck')
+            return False
+        dupl = self.foodtruck_col.find({'phone':data['phone']}).count()
+        if dupl >=1 :
+            print('휴대폰 번호 중')
+            return False
+        allfd = self.foodtruck_col.find()
+        newname = ''
+        for i in data['name'].split():
+            newname+=i
+            
+        for fd in allfd:
+            raw = fd['name']
+            name = ''
+            for i in raw.split():
+                name += i
+            if name==newname:
+                print('중복된 푸드트럭 이름')
+                return False     
+        return True 
         
     def review_write(self,data):
         duplicating = False
@@ -66,7 +170,6 @@ class Database_manager():
     
     def menu_enroll(self,data):
         owner_check = self.foodtruck_col.find_one({'id' : data['id']}) #메뉴 등록하고자 하는 유저의 id와 일치하는 푸드트럭 소유주 존재?
-
         if owner_check == None:
             print('[메뉴 등록] 이런 사람이 없어요!!!!!!!!!!')
             return False
@@ -88,7 +191,12 @@ class Database_manager():
                 upsert=True,
                 return_document=ReturnDocument.AFTER)
         return True
-        
+       
+    def remove_menu(self,data):
+        res = self.foodtruck_col.update({'id' : data['id']},
+                                        {'$unset' : {'{}.{}'.format('menulist',data['name']) : ''}})
+        return res
+
     def find_menulist_of_user(self,id_):
         menulist = []
 
@@ -97,44 +205,6 @@ class Database_manager():
             menulist.append(fd['menulist'][i])
         return menulist
 
-    def foodtruck_location(self,name):
-        fd = self.foodtruck_col.find_one({'id':name})
-        if 'saleslist' not in fd or fd['saleslist']=={}:
-            return (0,0)
-        loc = None
-        cnt = -1
-        for i in fd['saleslist']:
-            cnt += 1
-        loc = fd['saleslist'][str(cnt)]['location']
-        return loc
-        
-    def check_foodtruck_enroll(self,data):
-        modify_check = self.foodtruck_col.find({'id':data['id']}).count()
-        if modify_check!=0: #푸드트럭 수정 요청
-            return None
-        dupl = self.foodtruck_col.find(data).count()
-        if dupl >= 1:
-            print('same food truck')
-            return False
-        dupl = self.foodtruck_col.find({'phone':data['phone']}).count()
-        if dupl >=1 :
-            print('휴대폰 번호 중')
-            return False
-        allfd = self.foodtruck_col.find()
-        newname = ''
-        for i in data['name'].split():
-            newname+=i
-            
-        for fd in allfd:
-            raw = fd['name']
-            name = ''
-            for i in raw.split():
-                name += i
-            if name==newname:
-                print('중복된 푸드트럭 이름')
-                return False     
-        return True 
-        
     def start_sale(self,data):
         print(data['id'],end=' ')
         print('가 판매 시작, 어디서? ',end='')
@@ -215,128 +285,7 @@ class Database_manager():
         update_['{}.{}.{}'.format('saleslist',str(sales_cnt),'total_price')] = data['total_price']
         self.foodtruck_col.find_one_and_update({'id':data['id']},{'$set':update_})
         return res
-    
-
-    def insert_foodtruck_enroll(self,data):
-        fd_id = self.foodtruck_col.insert(data)
-        return fd_id
-    
-    def check_sign_in(self,data):
-        '''
-        회원가입 항목에 대한, DB와의 consistency 확인 ((이름-연락처) 및 ID 중복 확인))
-        '''
-        dupl1 = self.user_col.find({'name' : data['name'], 'phone':data['phone']}).count()
-        if dupl1 != 0:#duplicated (name, phone) tuple
-            print('same person signin')
-            return '3',False
-        dupl2 = self.user_col.find({'id':data['id']}).count()
-        if dupl2 != 0:#duplicated ID
-            print('\n[SIGN_IN ERROR]\nLOCATION : db_manager->check_sign_in\nduplicated id')
-            return '2',False
-        return '0',True
-    
-    def insert_sign_in(self,data):
-        '''
-        새로운 유저 데이터 저장
-        '''
-        user_id = self.user_col.insert(data)
-        return user_id
-
-    def try_login(self,data):
-        '''
-        로그인
-        '''
-        login_id_result = self.user_col.find({'id' : data['id']}).count()
-        if login_id_result != 1:
-            return '2',False, None
-        if login_id_result >2:
-            print('으아아아아아아아아아아앙ㅇ아아아아아')
-        login_id = self.user_col.find({'id' : data['id'],'password':data['password']})
-        login_id_result = login_id.count()
-        if login_id_result != 1:
-            return '3',False, None
-        else:
-            return '0',True, login_id[0]['type']
-
-    def find_foodtruck_info(self,user_id):
-        '''
-        user_id를 통해 푸드트럭 검색
-        dic return
-        '''
-        data = {'name':'-1','phone':'-1','area':'-1','ctg':'-1','introduction':'-1','menulist':'-1','reviewlist':'-1','photo':'-1'}
-        result = self.foodtruck_col.find_one({'id':user_id})
-        if result==None: return -1,data
-        for key in data:
-            if key == 'phone':
-                data['phone'] = split_phone(result['phone'])
-            elif key in ['menulist','reviewlist']:
-                data[key] = []
-                if key in result:
-                    for menu in result[key]:
-                        data[key].append(result[key][menu])
-            else:
-                data[key] = result[key] 
-        return 0,data
-    
-    def modify_foodtruck(self,data):
-        update_ = {}
-        for i in data:
-            update_[i] = data[i]
-        res = self.foodtruck_col.find_one_and_update(
-                {'id':data['id']},
-                {'$set':update_},
-                return_document=ReturnDocument.AFTER)
-        return True
-       
-    def recommend_keyword(self,location):
-        res = self.keyword_col.find()
-        counter = []
-        for keyword in res:#각 키워드별로, 주변에서 검색된 횟수를 counting한다.
-            cnt = 0
-            for idx in keyword['his']:
-                loc = keyword['his'][idx]['location']
-                dis = gps2meter(location,loc)*1000
-                if dis<2000:
-                    cnt += 1
-            counter.append({'name':keyword['name'], 'count':cnt})
-    
-        counter = sorted(counter, key=itemgetter('count'), reverse=True)
-
-        result_ = []
-        for i in counter:
-            result_.append(i['name'])
-
-        print('#키워드 추천 최종 리스트#')
-        print(result_)
-        return result_
-
-    def search_foodtruck(self,condition):
-        #푸드트럭 검색
-        results = search_algorithm(self.foodtruck_col, condition)
-
-        #검색 키워드 저장
-        keyword = condition['keyword'] if condition['keyword'] != '' else None
-        if keyword!=None:
-            curr_cnt = 1
-            res = self.keyword_col.find_one({'name':keyword})
-            if res == None:
-                self.keyword_col.insert({'name':keyword})
-                update_ = {'$set':{'his.{}.location'.format(curr_cnt):condition['location']}}
-                res = self.keyword_col.find_one_and_update({'name':keyword},update_)
-            else:
-                for i in res['his']:
-                    curr_cnt += 1
-                update_ = {'$set' : {'his.{}.location'.format(curr_cnt):condition['location']}}
-                res = self.keyword_col.find_one_and_update({'name':keyword},update_)
- 
-        return [len(results),results]
-
-    def find_photo(self,f_id):
-        fd = self.foodtruck_col.find_one({'id':f_id})
-        photo = fd['photo']
-        return photo
-
-        
+   
     def fd_sale_list(self,user_id):
         fd = self.foodtruck_col.find_one({'id':user_id})
         if fd==None or'saleslist' not in fd:
@@ -400,7 +349,113 @@ class Database_manager():
         for i in final_result:
             del i['sortkey']
         return final_result
-            
+        
+    def recommend_keyword(self,location):
+        '''
+        유저들의 장소에 따른 검색 키워드를 기반으로, 키워드 추천
+        '''
+        res = self.keyword_col.find()
+        counter = []
+        for keyword in res:#각 키워드별로, 주변에서 검색된 횟수를 counting한다.
+            cnt = 0
+            for idx in keyword['his']:
+                loc = keyword['his'][idx]['location']
+                dis = gps2meter(location,loc)*1000
+                if dis<2000:
+                    cnt += 1
+            counter.append({'name':keyword['name'], 'count':cnt})
+        
+        counter = sorted(counter, key=itemgetter('count'), reverse=True)
+
+        result_ = []
+        for i in counter[:3]:
+            result_.append(i['name'])
+      
+        if len(result_)<3:
+            condition = {'distance':2000,'location':location,'keyword':''}
+            search_ = search_algorithm(self.foodtruck_col,condition)
+            for j in range(len(result_)):
+                result_.append(search_[j]['name'])
+                if len(result_)==3: break
+            if len(result_)<3:
+                print('데이터 부족. 주변에 아무것도 X')
+                for i in range(3-len(result_)):
+                    result_.append(' ')
+
+        print('#키워드 추천 최종 리스트#')
+        print(result_)
+        return result_
+
+    def search_foodtruck(self,condition):
+        #푸드트럭 검색
+        results = search_algorithm(self.foodtruck_col, condition)
+
+        #검색 키워드 저장
+        keyword = condition['keyword'] if condition['keyword'] != '' else None
+        if keyword!=None:
+            curr_cnt = 1
+            res = self.keyword_col.find_one({'name':keyword})
+            if res == None:
+                self.keyword_col.insert({'name':keyword})
+                update_ = {'$set':{'his.{}.location'.format(curr_cnt):condition['location']}}
+                res = self.keyword_col.find_one_and_update({'name':keyword},update_)
+            else:
+                for i in res['his']:
+                    curr_cnt += 1
+                update_ = {'$set' : {'his.{}.location'.format(curr_cnt):condition['location']}}
+                res = self.keyword_col.find_one_and_update({'name':keyword},update_)
+ 
+        return [len(results),results]
+
+    def find_photo(self,f_id):
+        fd = self.foodtruck_col.find_one({'id':f_id})
+        photo = fd['photo']
+        return photo
+    
+    def favorite_check(self,user_id,f_id):
+        curr = self.user_col.find_one({'id':user_id})
+        if 'favorites' not in curr:
+            self.user_col.find_one_and_update({'id':user_id},{'$set':{'favorites':[]}})
+            return 0
+        if f_id not in curr['favorites']:
+            return 0
+        else:
+            return 1
+
+    def favorite_change(self,user_id,f_id,curr):
+        fd = self.user_col.find_one({'id':user_id})
+        curr = True if (int(curr)==0) else False
+
+        ls = fd['favorites'] if 'favorites' in fd else []
+
+        if curr:#즐겨찾기 등록 취소
+            print('즐겨찾기 취소 시도')
+            ls.remove(f_id) 
+        else:
+            print('즐겨찾기 등록 시도')
+            if f_id in ls: print('으악!!!!!!!!!!!~~~~~~~')
+            ls.append(f_id)
+        to_db = self.user_col.find_one_and_update({'id':user_id},{'$set':{'favorites':ls}})
+        after =  self.user_col.find_one({'id':user_id})['favorites']
+        res = 1
+        if curr and 'f_id' not in after: res = 0
+        if not curr and 'f_id' in after: res = 0
+        return res
+
+    def favorite_list(self,user_id):
+        fd = self.user_col.find_one({'id':user_id})
+        if 'favorites' not in fd: return []
+        favorites = fd['favorites']
+        return_ = []
+        for f_id in favorites:
+            dic = {'area':None,'id':f_id,'introduction':None,'name':None,'phone':None,'ctg':None,'menulist':None,'reviewlist':None}
+            data = self.foodtruck_col.find_one({'id':f_id})
+            keys = list(dic.keys())
+            dic = listpack(data,keys)
+        return_.append(dic)
+        return return_
+
+
 def search_algorithm(fd_col,condition):
     #Keyword, location을 통해 현재 영업중인 푸드트럭을 찾는다. 
     results = []
@@ -468,11 +523,13 @@ def split_phone(phone):
     return phone[:3]+'-'+phone[3:-4]+'-'+phone[-4:]
 
 
-def listpack(data):
+def listpack(data,condition=None):
     rekeys = ['menulist','reviewlist']
     newdata = {}
 
     for key in data:
+        if condition!=None and key not in condition:
+            continue
         if key=='_id':continue
         if key in rekeys:
             tmp = []
