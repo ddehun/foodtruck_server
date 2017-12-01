@@ -338,11 +338,11 @@ class Database_manager():
             if i['date']==tmp:
                 ondate.append(i)
             else:
-                ondate = sorted(ondate,key=itemgetter('end'))
+                ondate = sorted(ondate,key=itemgetter('sortkey'),reverse=True)
                 final_result += ondate
                 ondate=[i]
                 tmp=i['date']
-        ondate = sorted(ondate,key=itemgetter('sortkey'))
+        ondate = sorted(ondate,key=itemgetter('sortkey'),reverse=True)
         final_result += ondate
 
         print('매출정보 반환')
@@ -446,7 +446,6 @@ class Database_manager():
         fd = self.user_col.find_one({'id':user_id})
         if 'favorites' not in fd: return []
         favorites = fd['favorites']
-
         if favorites == []: return []
         return_ = []
         for f_id in favorites:
