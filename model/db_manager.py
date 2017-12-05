@@ -122,7 +122,9 @@ class Database_manager():
             name = ''
             for i in raw.split():
                 name += i
+            
             if name==newname:
+                continue
                 print('중복된 푸드트럭 이름')
                 return False     
         return True 
@@ -327,7 +329,8 @@ class Database_manager():
                 
             dic  = {'date':date, 'begin':begin, 'end':end, 'total_price':total_price, 'location':location}
             res.append(dic)
-
+        
+        if len(res)==0:return []
         #날짜,시간 순으로 매출정보 정리하기
         res= sorted(res,key=itemgetter('date'),reverse=True)
         final_result = []
@@ -435,6 +438,7 @@ class Database_manager():
             print('즐겨찾기 등록 시도')
             if f_id in ls: print('으악!!!!!!!!!!!~~~~~~~')
             ls.append(f_id)
+
         to_db = self.user_col.find_one_and_update({'id':user_id},{'$set':{'favorites':ls}})
         after =  self.user_col.find_one({'id':user_id})['favorites']
         res = 1
@@ -442,18 +446,21 @@ class Database_manager():
         if not curr and 'f_id' in after: res = 0
         return res
 
-    def favorite_list(self,user_id):
+    def favorite_list(self,user_id,location):
         fd = self.user_col.find_one({'id':user_id})
         if 'favorites' not in fd: return []
         favorites = fd['favorites']
         if favorites == []: return []
         return_ = []
         for f_id in favorites:
-            dic = {'area':None,'id':f_id,'introduction':None,'name':None,'phone':None,'ctg':None,'menulist':None,'reviewlist':None}
+            dic = {'area':None,'id':f_id,'introduction':None,'name':None,'phone':None,'ctg':None,'menulist':None,'reviewlist':None,'distance':None}
             data = self.foodtruck_col.find_one({'id':f_id})
+            if not data['sales']: continue
+            data['distance']=int(gps2meter(location,(float(data['lat']),float(data['long'])))*1000)
+
             keys = list(dic.keys())
             dic = listpack(data,keys)
-        return_.append(dic)
+            return_.append(dic)
         return return_
 
 
@@ -468,16 +475,16 @@ def search_algorithm(fd_col,condition):
     print('{}m이내 푸드트럭 검색'.format(threshold))
     pivot_location = condition['location']    
 
-    total = fd_col.find()#fd_col.find({'sales':True})
+    total = fd_col.find({'sales':True})
 
     for fd in total:
         if 'name' not in fd:continue
         if 'lat' not in fd: continue
         raw_loc = (float(fd['lat']),float(fd['long']))
-        print('두 푸드트럭간의 거리 : ',end='')
         dis = gps2meter(pivot_location,raw_loc)
         dis = dis*1000 #km to meter
-        print(dis,end='m\n')
+        #print('{}간의 거리 : '.format(fd['name']),end='')
+        #print(dis,end='m\n')
         if dis < threshold:
             del fd['_id']
             if fd not in location_results:
@@ -515,12 +522,14 @@ def search_algorithm(fd_col,condition):
 
     print('\n#최종검색결과#')
     for i in final_results:
-        print(i['name'])
+        print('{} : {}'.format(i['name'],i['id']))
     return final_results
 
 
 def split_phone(phone):
     phone = str(phone)
+    if '-' in phone:
+        return phone
     return phone[:3]+'-'+phone[3:-4]+'-'+phone[-4:]
 
 

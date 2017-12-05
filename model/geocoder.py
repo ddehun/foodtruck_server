@@ -16,6 +16,5 @@ def loc2addr(lat,lng):
     return address
 
 if __name__ == '__main__':
-    print(loc2addr(36.3732403,127.3623303))
-    
+    pass    
     

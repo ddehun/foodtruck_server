@@ -238,6 +238,7 @@ def review_write():
 @application.route('/search',methods=['POST'])
 def search():
     print('[검색 요청]')
+    print(request.form['location'])
     print(request.form)
     search_schema = Search_schema(request.form)
     conditions = search_schema.dictionalize()
@@ -275,10 +276,13 @@ def favorite_change():
 def favorite_list():
     print('[즐겨찾기 리스트]')
     user_id = request.form['id']
+    raw_loc = request.form['location']
+    location = (float(raw_loc.split(',')[0][1:]),(float(raw_loc.split(',')[1][:-1])))
     print(user_id)
-    res = dbman.favorite_list(user_id)
+    res = dbman.favorite_list(user_id,location)
     for i in range(len(res)):
-        res[i]['distance'] = '0' 
+        #res[i]['distance'] = '0' 
+        print(res[i]['name'])
     return jsonify('0',{'data':res})
 
 

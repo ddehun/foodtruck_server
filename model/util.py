@@ -35,4 +35,13 @@ def distance(loc1,loc2):
     return once
 
 if __name__ == '__main__':
-    a,b = ctg2name(12,True)
+    
+    pivot = (36.37455842517162,127.3653693124652)
+    
+
+    while(1):
+        print(pivot)
+
+        a=input('>>')
+        q = (float(a.split(',')[0][1:]),float(a.split(',')[1][:-1]))
+        print(round(gps2meter(pivot,q)*1000,2))
